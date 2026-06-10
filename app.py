@@ -200,7 +200,7 @@ if df is not None:
             st.multiselect("Phase", ["Powerplay (1-6)", "Middle (7-15)", "Slog (16-20)"], key="f_phase")
 
         # ----- Minimum balls filter -----
-        st.number_input("Minimum Balls", min_value=0, value=0, step=1, key="f_min_balls",
+        st.number_input("Minimum Balls", min_value=0, value=50, step=5, key="f_min_balls",
                         help="Only include batters with at least this many balls faced")
 
         # ----- Buttons: clear (col 2) and apply (col 3) -----
