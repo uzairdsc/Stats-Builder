@@ -267,7 +267,7 @@ if df is not None:
             with info_col:
                 st.markdown(f"**📊 Batting Summary** — {len(summary_df):,} players found")
             with rows_col:
-                rows_to_show = st.selectbox("Rows", [10, 20, 50, 100], key="rows_to_show")
+                rows_to_show = st.selectbox("Rows", [10, 20, 50, 100, 200, 500], key="rows_to_show")
 
             display_df = summary_df.head(rows_to_show).copy()
             display_df.index = range(1, len(display_df) + 1)
