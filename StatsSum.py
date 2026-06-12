@@ -252,7 +252,7 @@ def batting_summary(
     )
 
     first_10 = (
-        valid_balls.groupby(["p_match", "inns"], dropna=False, sort=False)
+        valid_balls.groupby(["p_match", "inns","p_bat"], dropna=False, sort=False)
         .head(sr10_balls)
         .copy()
     )
