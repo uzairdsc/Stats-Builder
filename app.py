@@ -68,7 +68,7 @@ df = st.session_state.df
 S3_DEFAULTS = {
     "S3_since24": ("t20_bbb_since_2024.csv", "load_2024"),
     "S3_PSL-26": ("t20_bbb_psl_2026.csv", "load_psl26"),
-    "S3_all": ("t20_bbb_wt20.csv", "load_complete"),
+    "S3_all": ("t20_bbb.csv", "load_complete"),
 }
 CACHE_DEFAULTS = {
     "Cache_all": "E:/Cricket Related Projects/HG-Datasets/t20_bbb.csv",
