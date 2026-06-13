@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+# Batter Stats Summary Method
 
 def batting_summary(
     df,
@@ -403,3 +404,319 @@ def batting_summary(
     ].sort_values(by="Runs", ascending=False).reset_index(drop=True)
 
     return summary
+
+
+# Bowler Stats Summary Method
+
+def bowler_summary(
+    df,
+    # Existing value filters (same set as batting_summary for drop-in compatibility)
+    player_name=None,      # filters batter faced (matchup filter)
+    pid=None,              # batter pid
+    inns=None,
+    mat_num=None,
+    team_bat=None,
+    team_bowl=None,
+    bowler_name=None,      # filters the bowler (bowl)
+    competition=None,
+    date_from=None,
+    date_to=None,
+    over_values=None,
+    phase=None,
+    bowler_id=None,        # filters the bowler (p_bowl)
+    ground=None,
+    mcode=None,
+    bat_hand=None,
+    bowl_type=None,
+    bowl_kind=None,
+    bowl_arm=None,
+    year_from=None,
+    year_to=None,
+    min_balls=None,
+    # Placeholder filters (inactive)
+    batting_position=None,
+    nationality=None,
+    age_range=None,
+):
+    local_df = df.copy()
+
+    # --------- Value filters (identical to batting_summary) ---------
+    if pid is not None:
+        local_df = local_df[local_df["p_bat"].astype(str) == str(pid)]
+    elif player_name is not None:
+        if isinstance(player_name, (list, tuple, set)):
+            local_df = local_df[local_df["bat"].isin(list(player_name))]
+        else:
+            local_df = local_df[local_df["bat"] == player_name]
+
+    if mat_num is not None:
+        if isinstance(mat_num, (list, tuple, set)):
+            local_df = local_df[local_df["p_match"].isin(list(mat_num))]
+        else:
+            local_df = local_df[local_df["p_match"] == mat_num]
+
+    if inns is not None:
+        if isinstance(inns, (list, tuple, set)):
+            if len(inns) > 0:
+                local_df = local_df[local_df["inns"].isin(list(inns))]
+        else:
+            local_df = local_df[local_df["inns"] == inns]
+
+    if team_bat is not None:
+        if isinstance(team_bat, (list, tuple, set)):
+            if len(team_bat) > 0:
+                local_df = local_df[local_df["team_bat"].isin(list(team_bat))]
+        else:
+            local_df = local_df[local_df["team_bat"] == team_bat]
+
+    if team_bowl is not None:
+        if isinstance(team_bowl, (list, tuple, set)):
+            if len(team_bowl) > 0:
+                local_df = local_df[local_df["team_bowl"].isin(list(team_bowl))]
+        else:
+            local_df = local_df[local_df["team_bowl"] == team_bowl]
+
+    if competition:
+        local_df = local_df[local_df["competition"] == competition]
+
+    if over_values is not None:
+        if isinstance(over_values, (list, tuple, set)):
+            local_df = local_df[local_df["over"].isin(list(over_values))]
+        else:
+            local_df = local_df[local_df["over"] == over_values]
+
+    if phase is not None:
+        phase_list = list(phase) if isinstance(phase, (list, tuple, set)) else [phase]
+        if len(phase_list) > 0:
+            mask = pd.Series([False] * len(local_df), index=local_df.index)
+            if 1 in phase_list:
+                mask |= local_df["over"].between(1, 6)
+            if 2 in phase_list:
+                mask |= local_df["over"].between(7, 15)
+            if 3 in phase_list:
+                mask |= local_df["over"].between(16, 20)
+            local_df = local_df[mask]
+
+    if date_from is not None:
+        local_df = local_df[local_df["date"] >= pd.to_datetime(date_from)]
+    if date_to is not None:
+        local_df = local_df[local_df["date"] <= pd.to_datetime(date_to)]
+
+    if ground is not None:
+        if isinstance(ground, (list, tuple, set)):
+            if len(ground) > 0:
+                local_df = local_df[local_df["ground"].isin(list(ground))]
+        else:
+            local_df = local_df[local_df["ground"] == ground]
+
+    if mcode is not None:
+        if isinstance(mcode, (list, tuple, set)):
+            if len(mcode) > 0:
+                local_df = local_df[local_df["mcode"].isin(list(mcode))]
+        else:
+            local_df = local_df[local_df["mcode"] == mcode]
+
+    if bat_hand is not None:
+        if isinstance(bat_hand, (list, tuple, set)):
+            if len(bat_hand) > 0:
+                local_df = local_df[local_df["bat_hand"].isin(list(bat_hand))]
+        else:
+            local_df = local_df[local_df["bat_hand"] == bat_hand]
+
+    if bowl_type is not None:
+        if isinstance(bowl_type, (list, tuple, set)):
+            if len(bowl_type) > 0:
+                local_df = local_df[local_df["bowl_type"].isin(list(bowl_type))]
+        else:
+            local_df = local_df[local_df["bowl_type"] == bowl_type]
+
+    if bowl_kind is not None:
+        if isinstance(bowl_kind, (list, tuple, set)):
+            if len(bowl_kind) > 0:
+                local_df = local_df[local_df["bowl_kind"].isin(list(bowl_kind))]
+        else:
+            local_df = local_df[local_df["bowl_kind"] == bowl_kind]
+
+    if bowl_arm is not None:
+        if isinstance(bowl_arm, (list, tuple, set)):
+            if len(bowl_arm) > 0:
+                local_df = local_df[local_df["bowl_arm"].isin(list(bowl_arm))]
+        else:
+            local_df = local_df[local_df["bowl_arm"] == bowl_arm]
+
+    if bowler_id is not None:
+        local_df = local_df[local_df["p_bowl"] == bowler_id]
+    elif bowler_name is not None:
+        if isinstance(bowler_name, (list, tuple, set)):
+            local_df = local_df[local_df["bowl"].isin(list(bowler_name))]
+        else:
+            local_df = local_df[local_df["bowl"] == bowler_name]
+
+    if year_from is not None:
+        local_df = local_df[local_df["year"] >= int(year_from)]
+    if year_to is not None:
+        local_df = local_df[local_df["year"] <= int(year_to)]
+
+    OUT_COLS = [
+        "Player", "Balls", "Wkts", "Econ", "Avg", "SR",
+        "B/4", "B/6", "B/Bdy", "Bdy%", "NB-Econ", "Wkt%", "Dot%",
+        "PP Econ", "PP Wkts", "PP Dot%",
+        "Mid Eco", "Mid Wkts", "Mid Dot%",
+        "Dth Econ", "Dth Wkts", "Dth Dot%", "Dth 6s",
+        "SR-I", "SR-II", "Pressure",
+    ]
+
+    if local_df.empty:
+        return pd.DataFrame(columns=OUT_COLS)
+
+    # --------- Type normalization ---------
+    for c in ["wide", "noball", "byes", "legbyes", "batruns", "bowlruns"]:
+        local_df[c] = pd.to_numeric(local_df[c], errors="coerce").fillna(0)
+    for c in ["over", "inns", "p_match", "p_bowl", "p_out"]:
+        local_df[c] = pd.to_numeric(local_df[c], errors="coerce")
+    local_df["out"] = local_df["out"].fillna(False).astype(bool)
+
+    # all_balls = every delivery (used for RUNS conceded + wickets, includes wides/noballs)
+    all_balls = local_df.copy()
+
+    # valid_balls = legal balls only (wide==0 & noball==0); byes/legbyes ARE legal balls
+    valid_balls = local_df[(local_df["wide"] == 0) & (local_df["noball"] == 0)].copy()
+
+    if valid_balls.empty:
+        return pd.DataFrame(columns=OUT_COLS)
+
+    GRP = ["bowl", "p_bowl"]
+
+    # Bowler-credited wicket mask (on all deliveries)
+    BOWLER_DISMISSALS = ["bowled", "caught", "leg before wicket", "stumped", "hit wicket"]
+    all_balls["is_wkt"] = (
+        all_balls["out"]
+        & (all_balls["outcome"] == "out")
+        & all_balls["dismissal"].isin(BOWLER_DISMISSALS)
+    ).astype(int)
+
+    # Boundary / dot flags on legal balls
+    valid_balls["is_four"] = ((valid_balls["batruns"] == 4) & (valid_balls["outcome"] == "four")).astype(int)
+    valid_balls["is_six"] = ((valid_balls["batruns"] == 6) & (valid_balls["outcome"] == "six")).astype(int)
+    valid_balls["is_boundary"] = (valid_balls["is_four"] == 1) | (valid_balls["is_six"] == 1)
+    valid_balls["is_dot"] = (valid_balls["bowlruns"] == 0).astype(int)          # 0 runs conceded = dot for bowler
+    valid_balls["boundary_runs"] = np.where(valid_balls["is_boundary"], valid_balls["bowlruns"], 0)
+
+    # ----- Core totals -----
+    balls = valid_balls.groupby(GRP, dropna=False).agg(Balls=("bowlruns", "size")).reset_index()
+    runs = all_balls.groupby(GRP, dropna=False).agg(Runs=("bowlruns", "sum")).reset_index()
+    wkts = all_balls.groupby(GRP, dropna=False).agg(Wkts=("is_wkt", "sum")).reset_index()
+
+    bdry = (
+        valid_balls.groupby(GRP, dropna=False)
+        .agg(
+            Fours=("is_four", "sum"),
+            Sixes=("is_six", "sum"),
+            DotBalls=("is_dot", "sum"),
+            BoundaryRuns=("boundary_runs", "sum"),
+            LegalRuns=("bowlruns", "sum"),
+        )
+        .reset_index()
+    )
+
+    # ----- Phase aggregates -----
+    def phase_balls(lo, hi):
+        sub = valid_balls[valid_balls["over"].between(lo, hi)]
+        return (
+            sub.groupby(GRP, dropna=False)
+            .agg(Balls=("bowlruns", "size"), Dots=("is_dot", "sum"), Sixes=("is_six", "sum"))
+            .reset_index()
+        )
+
+    def phase_runs_wkts(lo, hi):
+        sub = all_balls[all_balls["over"].between(lo, hi)]
+        return (
+            sub.groupby(GRP, dropna=False)
+            .agg(Runs=("bowlruns", "sum"), Wkts=("is_wkt", "sum"))
+            .reset_index()
+        )
+
+    pp_b, mid_b, dth_b = phase_balls(1, 6), phase_balls(7, 15), phase_balls(16, 20)
+    pp_rw, mid_rw, dth_rw = phase_runs_wkts(1, 6), phase_runs_wkts(7, 15), phase_runs_wkts(16, 20)
+
+    pp_b = pp_b.rename(columns={"Balls": "PP_Balls", "Dots": "PP_Dots", "Sixes": "PP_Sixes"})
+    mid_b = mid_b.rename(columns={"Balls": "Mid_Balls", "Dots": "Mid_Dots", "Sixes": "Mid_Sixes"})
+    dth_b = dth_b.rename(columns={"Balls": "Dth_Balls", "Dots": "Dth_Dots", "Sixes": "Dth_Sixes"})
+    pp_rw = pp_rw.rename(columns={"Runs": "PP_Runs", "Wkts": "PP_Wkts"})
+    mid_rw = mid_rw.rename(columns={"Runs": "Mid_Runs", "Wkts": "Mid_Wkts"})
+    dth_rw = dth_rw.rename(columns={"Runs": "Dth_Runs", "Wkts": "Dth_Wkts"})
+
+    # ----- Innings aggregates (balls legal, wkts all) -----
+    def inns_balls(i):
+        return valid_balls[valid_balls["inns"] == i].groupby(GRP, dropna=False).agg(Balls=("bowlruns", "size")).reset_index()
+
+    def inns_wkts(i):
+        return all_balls[all_balls["inns"] == i].groupby(GRP, dropna=False).agg(Wkts=("is_wkt", "sum")).reset_index()
+
+    si_b, sii_b = inns_balls(1).rename(columns={"Balls": "SR_I_Balls"}), inns_balls(2).rename(columns={"Balls": "SR_II_Balls"})
+    si_w, sii_w = inns_wkts(1).rename(columns={"Wkts": "SR_I_Wkts"}), inns_wkts(2).rename(columns={"Wkts": "SR_II_Wkts"})
+
+    # ----- Merge -----
+    s = balls.merge(runs, on=GRP, how="left").merge(wkts, on=GRP, how="left").merge(bdry, on=GRP, how="left")
+    for frame in [pp_b, mid_b, dth_b, pp_rw, mid_rw, dth_rw, si_b, sii_b, si_w, sii_w]:
+        s = s.merge(frame, on=GRP, how="left")
+
+    fill_cols = [c for c in s.columns if c not in GRP]
+    s[fill_cols] = s[fill_cols].fillna(0)
+
+    # ----- Metrics -----
+    s["Econ"] = np.where(s["Balls"] > 0, round(s["Runs"] * 6 / s["Balls"], 2), 0.0)
+    s["Avg"] = np.where(s["Wkts"] > 0, round(s["Runs"] / s["Wkts"], 2), np.nan)
+    s["SR"] = np.where(s["Wkts"] > 0, round(s["Balls"] / s["Wkts"], 1), np.nan)
+
+    s["B/4"] = np.where(s["Fours"] > 0, round(s["Balls"] / s["Fours"], 1), np.nan)
+    s["B/6"] = np.where(s["Sixes"] > 0, round(s["Balls"] / s["Sixes"], 1), np.nan)
+    s["B/Bdy"] = np.where((s["Fours"] + s["Sixes"]) > 0, round(s["Balls"] / (s["Fours"] + s["Sixes"]), 1), np.nan)
+    s["Bdy%"] = np.where(s["Balls"] > 0, round((s["Fours"] + s["Sixes"]) / s["Balls"] * 100, 1), 0.0)
+
+    nb_balls = s["Balls"] - (s["Fours"] + s["Sixes"])
+    nb_runs = s["LegalRuns"] - s["BoundaryRuns"]
+    s["NB-Econ"] = np.where(nb_balls > 0, round(nb_runs * 6 / nb_balls, 2), 0.0)
+
+    s["Wkt%"] = np.where(s["Balls"] > 0, round(s["Wkts"] / s["Balls"] * 100, 1), 0.0)
+    s["Dot%"] = np.where(s["Balls"] > 0, round(s["DotBalls"] / s["Balls"] * 100, 1), 0.0)
+
+    s["PP Econ"] = np.where(s["PP_Balls"] > 0, round(s["PP_Runs"] * 6 / s["PP_Balls"], 2), 0.0)
+    s["PP Wkts"] = s["PP_Wkts"].astype(int)
+    s["PP Dot%"] = np.where(s["PP_Balls"] > 0, round(s["PP_Dots"] / s["PP_Balls"] * 100, 1), 0.0)
+
+    s["Mid Eco"] = np.where(s["Mid_Balls"] > 0, round(s["Mid_Runs"] * 6 / s["Mid_Balls"], 2), 0.0)
+    s["Mid Wkts"] = s["Mid_Wkts"].astype(int)
+    s["Mid Dot%"] = np.where(s["Mid_Balls"] > 0, round(s["Mid_Dots"] / s["Mid_Balls"] * 100, 1), 0.0)
+
+    s["Dth Econ"] = np.where(s["Dth_Balls"] > 0, round(s["Dth_Runs"] * 6 / s["Dth_Balls"], 2), 0.0)
+    s["Dth Wkts"] = s["Dth_Wkts"].astype(int)
+    s["Dth Dot%"] = np.where(s["Dth_Balls"] > 0, round(s["Dth_Dots"] / s["Dth_Balls"] * 100, 1), 0.0)
+    s["Dth 6s"] = s["Dth_Sixes"].astype(int)
+
+    s["SR-I"] = np.where(s["SR_I_Wkts"] > 0, round(s["SR_I_Balls"] / s["SR_I_Wkts"], 1), np.nan)
+    s["SR-II"] = np.where(s["SR_II_Wkts"] > 0, round(s["SR_II_Balls"] / s["SR_II_Wkts"], 1), np.nan)
+
+    # ----- Pressure (PLACEHOLDER scaling — to discuss) -----
+    # Dot% (40%) + Economy-vs-benchmark (35%) + Wicket-rate (25%), scaled 0-100.
+    benchmark_econ = (all_balls["bowlruns"].sum() * 6 / len(valid_balls)) if len(valid_balls) > 0 else 0.0
+    dot_comp = s["Dot%"].clip(0, 100)
+    if benchmark_econ > 0:
+        econ_comp = (50 + (benchmark_econ - s["Econ"]) / benchmark_econ * 50).clip(0, 100)
+    else:
+        econ_comp = pd.Series(50.0, index=s.index)
+    wkt_comp = (s["Wkt%"] * 10).clip(0, 100)   # 10% wicket rate -> 100 (placeholder)
+    s["Pressure"] = round(0.40 * dot_comp + 0.35 * econ_comp + 0.25 * wkt_comp, 1)
+
+    s["Wkts"] = s["Wkts"].astype(int)
+    s["Balls"] = s["Balls"].astype(int)
+
+    if min_balls is not None:
+        s = s[s["Balls"] >= int(min_balls)]
+
+    s = s.rename(columns={"bowl": "Player"})
+    s = s[OUT_COLS].sort_values(by=["Wkts", "Econ"], ascending=[False, True]).reset_index(drop=True)
+    
+    return s
+
+

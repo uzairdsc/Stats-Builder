@@ -3,7 +3,7 @@ import pandas as pd
 import boto3
 from botocore.exceptions import NoCredentialsError
 
-from StatsSum import batting_summary
+from StatsSum import batting_summary, bowler_summary
 
 # ===== AUTH =====
 APP_PASSWORD = st.secrets["auth"]["password"]
@@ -23,7 +23,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 st.set_page_config(page_title="Stats Builder App", page_icon="🏏", layout="wide")
-st.title("🏏 Stats Builder - T20 Batting Stats Dashboard")
+st.title("🏏 Stats Builder - T20 Stats Dashboard")
 
 
 @st.cache_data(ttl=60)  # Cache for 1 min
@@ -58,8 +58,10 @@ data_source = st.sidebar.selectbox(
 
 if 'df' not in st.session_state:
     st.session_state.df = None
-if 'summary_df' not in st.session_state:
-    st.session_state.summary_df = None
+if 'batting_df' not in st.session_state:
+    st.session_state.batting_df = None
+if 'bowling_df' not in st.session_state:
+    st.session_state.bowling_df = None
 
 df = st.session_state.df
 
@@ -133,7 +135,8 @@ if st.session_state.df is not None:
         if st.button("🗑️ Clear Data", key="clear_data_btn"):
             st.cache_data.clear()
             st.session_state.df = None
-            st.session_state.summary_df = None
+            st.session_state.batting_df = None
+            st.session_state.bowling_df = None
             st.rerun()
 
 # Widget keys used by filters (for Clear Filters)
@@ -143,6 +146,61 @@ FILTER_KEYS = [
     "f_team_bowl", "f_bowler", "f_bowl_type", "f_bowl_kind",
     "f_bowl_arm", "f_inns", "f_overs", "f_phase", "f_min_balls",
 ]
+
+# ===== Header tooltips (clear metric definitions) =====
+BAT_COL_CONFIG = {
+    "Player": st.column_config.TextColumn("Player", help="Player name"),
+    "Balls": st.column_config.NumberColumn("Balls", help="Legal balls faced"),
+    "Runs": st.column_config.NumberColumn("Runs", help="Total runs scored"),
+    "HS": st.column_config.NumberColumn("HS", help="Highest score in an innings"),
+    "SR": st.column_config.NumberColumn("SR", help="Strike rate (runs per 100 balls)"),
+    "SR10": st.column_config.NumberColumn("SR10", help="Strike rate over the first 10 balls of each innings"),
+    "Avg": st.column_config.NumberColumn("Avg", help="Batting average (runs per dismissal)"),
+    "B/Dis": st.column_config.NumberColumn("B/Dis", help="Balls faced per dismissal"),
+    "B/4": st.column_config.NumberColumn("B/4", help="Balls faced per four hit"),
+    "B/6": st.column_config.NumberColumn("B/6", help="Balls faced per six hit"),
+    "B/Bdy": st.column_config.NumberColumn("B/Bdy", help="Balls faced per boundary (fours and sixes combined)"),
+    "Bdy%": st.column_config.NumberColumn("Bdy%", help="% of balls faced that were hit for a boundary"),
+    "BRns%": st.column_config.NumberColumn("BRns%", help="% of total runs scored from boundaries"),
+    "NB-SR": st.column_config.NumberColumn("NB-SR", help="Strike rate on non-boundary scoring balls (1s, 2s, 3s)"),
+    "Dot%": st.column_config.NumberColumn("Dot%", help="% of balls faced that were dot balls"),
+    "Run%": st.column_config.NumberColumn("Run%", help="% of balls faced that scored 1-3 runs"),
+    "PP SR": st.column_config.NumberColumn("PP SR", help="Powerplay strike rate (overs 1-6)"),
+    "Mid SR": st.column_config.NumberColumn("Mid SR", help="Middle overs strike rate (overs 7-15)"),
+    "Dth SR": st.column_config.NumberColumn("Dth SR", help="Death overs strike rate (overs 16-20)"),
+    "Accel": st.column_config.NumberColumn("Accel", help="Acceleration: death-overs SR divided by powerplay SR"),
+    "30+%": st.column_config.NumberColumn("30+%", help="% of innings where the batter scored 30 or more"),
+    "SR-I": st.column_config.NumberColumn("SR-I", help="Strike rate in the first innings"),
+    "SR-II": st.column_config.NumberColumn("SR-II", help="Strike rate in the second innings"),
+}
+BOWL_COL_CONFIG = {
+    "Player": st.column_config.TextColumn("Player", help="Player name"),
+    "Balls": st.column_config.NumberColumn("Balls", help="Legal balls bowled"),
+    "Wkts": st.column_config.NumberColumn("Wkts", help="Total wickets taken"),
+    "Econ": st.column_config.NumberColumn("Econ", help="Runs conceded per 6 legal balls"),
+    "Avg": st.column_config.NumberColumn("Avg", help="Runs conceded per wicket"),
+    "SR": st.column_config.NumberColumn("SR", help="Balls bowled per wicket"),
+    "B/4": st.column_config.NumberColumn("B/4", help="Balls bowled per four conceded"),
+    "B/6": st.column_config.NumberColumn("B/6", help="Balls bowled per six conceded"),
+    "B/Bdy": st.column_config.NumberColumn("B/Bdy", help="Balls bowled per boundary conceded (fours and sixes combined)"),
+    "Bdy%": st.column_config.NumberColumn("Bdy%", help="% of balls bowled that were hit for a boundary"),
+    "NB-Econ": st.column_config.NumberColumn("NB-Econ", help="Economy rate on non-boundary balls"),
+    "Wkt%": st.column_config.NumberColumn("Wkt%", help="% of legal balls that took a wicket"),
+    "Dot%": st.column_config.NumberColumn("Dot%", help="% of legal balls that were dot balls"),
+    "PP Econ": st.column_config.NumberColumn("PP Econ", help="Powerplay economy rate (overs 1-6)"),
+    "PP Wkts": st.column_config.NumberColumn("PP Wkts", help="Wickets taken in the powerplay"),
+    "PP Dot%": st.column_config.NumberColumn("PP Dot%", help="Dot ball % in the powerplay"),
+    "Mid Eco": st.column_config.NumberColumn("Mid Eco", help="Middle overs economy rate (overs 7-15)"),
+    "Mid Wkts": st.column_config.NumberColumn("Mid Wkts", help="Wickets taken in the middle overs"),
+    "Mid Dot%": st.column_config.NumberColumn("Mid Dot%", help="Dot ball % in the middle overs"),
+    "Dth Econ": st.column_config.NumberColumn("Dth Econ", help="Death overs economy rate (overs 16-20)"),
+    "Dth Wkts": st.column_config.NumberColumn("Dth Wkts", help="Wickets taken in the death overs"),
+    "Dth Dot%": st.column_config.NumberColumn("Dth Dot%", help="Dot ball % in the death overs"),
+    "Dth 6s": st.column_config.NumberColumn("Dth 6s", help="Sixes conceded in the death overs"),
+    "SR-I": st.column_config.NumberColumn("SR-I", help="Balls bowled per wicket in the first innings"),
+    "SR-II": st.column_config.NumberColumn("SR-II", help="Balls bowled per wicket in the second innings"),
+    "Pressure": st.column_config.NumberColumn("Pressure", help="Composite 0-100 score: Dot% (40%) + economy vs benchmark (35%) + wicket rate (25%)"),
+}
 
 
 def opts(frame, col):
@@ -166,7 +224,6 @@ if df is not None:
 
         # ----- Column 1: Date, Competition, Match, Match Code -----
         with c1:
-            date_from, date_to = None, None
             if 'date' in df.columns:
                 valid_dates = df['date'].dropna()
                 if not valid_dates.empty:
@@ -201,7 +258,7 @@ if df is not None:
 
         # ----- Minimum balls filter -----
         st.number_input("Minimum Balls", min_value=0, value=50, step=5, key="f_min_balls",
-                        help="Only include batters with at least this many balls faced")
+                        help="Only include players with at least this many balls (faced for batting, bowled for bowling)")
 
         # ----- Buttons: clear (col 2) and apply (col 3) -----
         b1, b2, b3, b4 = st.columns(4)
@@ -210,14 +267,15 @@ if df is not None:
         with b3:
             apply_clicked = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
-    # Clear: reset all filter widgets and result
+    # Clear: reset all filter widgets and results
     if clear_clicked:
         for k in FILTER_KEYS:
             st.session_state.pop(k, None)
-        st.session_state.summary_df = None
+        st.session_state.batting_df = None
+        st.session_state.bowling_df = None
         st.rerun()
 
-    # Apply: run batting_summary once with all selected filters
+    # Apply: run BOTH summaries once with the same filter set
     if apply_clicked:
         s = st.session_state
 
@@ -231,51 +289,64 @@ if df is not None:
 
         comp = s.get("f_competition", "All")
 
-        with st.spinner("Computing batting summary..."):
-            st.session_state.summary_df = batting_summary(
-                df,
-                player_name=s.get("f_batter") or None,
-                team_bat=s.get("f_team_bat") or None,
-                team_bowl=s.get("f_team_bowl") or None,
-                bowler_name=s.get("f_bowler") or None,
-                competition=None if comp == "All" else comp,
-                mat_num=s.get("f_match") or None,
-                mcode=s.get("f_mcode") or None,
-                inns=s.get("f_inns") or None,
-                over_values=s.get("f_overs") or None,
-                phase=phase_sel or None,
-                date_from=date_from,
-                date_to=date_to,
-                ground=s.get("f_ground") or None,
-                bat_hand=s.get("f_bat_hand") or None,
-                bowl_type=s.get("f_bowl_type") or None,
-                bowl_kind=s.get("f_bowl_kind") or None,
-                bowl_arm=s.get("f_bowl_arm") or None,
-                min_balls=s.get("f_min_balls") or None,
-            )
+        common_kwargs = dict(
+            player_name=s.get("f_batter") or None,
+            team_bat=s.get("f_team_bat") or None,
+            team_bowl=s.get("f_team_bowl") or None,
+            bowler_name=s.get("f_bowler") or None,
+            competition=None if comp == "All" else comp,
+            mat_num=s.get("f_match") or None,
+            mcode=s.get("f_mcode") or None,
+            inns=s.get("f_inns") or None,
+            over_values=s.get("f_overs") or None,
+            phase=phase_sel or None,
+            date_from=date_from,
+            date_to=date_to,
+            ground=s.get("f_ground") or None,
+            bat_hand=s.get("f_bat_hand") or None,
+            bowl_type=s.get("f_bowl_type") or None,
+            bowl_kind=s.get("f_bowl_kind") or None,
+            bowl_arm=s.get("f_bowl_arm") or None,
+            min_balls=s.get("f_min_balls") or None,
+        )
 
-    # ===== Results Table =====
-    summary_df = st.session_state.summary_df
-    if summary_df is not None:
+        with st.spinner("Computing batting & bowling summaries..."):
+            st.session_state.batting_df = batting_summary(df, **common_kwargs)
+            st.session_state.bowling_df = bowler_summary(df, **common_kwargs)
+
+    # ===== Results Section =====
+    batting_df = st.session_state.batting_df
+    bowling_df = st.session_state.bowling_df
+
+    if batting_df is not None or bowling_df is not None:
         st.markdown("---")
 
-        if summary_df.empty:
+        # Top control row: view toggle (left) + rows dropdown (right)
+        view_col, _, rows_col = st.columns([2, 4, 1])
+        with view_col:
+            view = st.segmented_control(
+                "View", ["Batting", "Bowling"], default="Batting",
+                key="stats_view", label_visibility="collapsed"
+            ) or "Batting"
+        with rows_col:
+            rows_to_show = st.selectbox("Rows", [10, 20, 50, 100, 200, 500], key="rows_to_show")
+
+        if view == "Batting":
+            result_df, col_config, label = batting_df, BAT_COL_CONFIG, "Batting Summary"
+        else:
+            result_df, col_config, label = bowling_df, BOWL_COL_CONFIG, "Bowling Summary"
+
+        if result_df is None or result_df.empty:
             st.error("⚠️ No data available for the selected filters. Please adjust your filter selections.")
         else:
-            # Rows dropdown on the right side, above the table
-            info_col, rows_col = st.columns([5, 1])
-            with info_col:
-                st.markdown(f"**📊 Batting Summary** — {len(summary_df):,} players found")
-            with rows_col:
-                rows_to_show = st.selectbox("Rows", [10, 20, 50, 100, 200, 500], key="rows_to_show")
-
-            display_df = summary_df.head(rows_to_show).copy()
+            st.markdown(f"**📊 {label}** — {len(result_df):,} players found")
+            display_df = result_df.head(rows_to_show).copy()
             display_df.index = range(1, len(display_df) + 1)
-
             st.dataframe(
                 display_df,
                 use_container_width=True,
                 height=420,
+                column_config=col_config,
             )
 else:
     st.info("Please select a dataset source to begin.")
