@@ -2,8 +2,15 @@ import streamlit as st
 import pandas as pd
 import boto3
 from botocore.exceptions import NoCredentialsError
+import os
+from pathlib import Path
 
 from StatsSum import batting_summary, bowler_summary
+
+DATA_ROOT = os.getenv("DATA_ROOT", "data")
+psl_2026_path = Path(DATA_ROOT) / "t20_bbb_psl_2026.csv"
+t20_since_2024_path = Path(DATA_ROOT) / "t20_bbb_since_2024.csv"
+t20_all_path = Path(DATA_ROOT) / "t20_bbb.csv"
 
 # ===== AUTH =====
 APP_PASSWORD = st.secrets["auth"]["password"]
@@ -53,7 +60,7 @@ def load_from_s3(bucket_name, file_key, aws_access_key, aws_secret_key, region_n
 st.sidebar.header("📂 Select Dataset Source")
 data_source = st.sidebar.selectbox(
     "Choose data source:",
-    ["Upload Data File", "S3_since24", "S3_PSL-26", "S3_all", "Cache_all", "Cache_since24"]
+    ["Upload Data File", "S3_since24", "S3_PSL-26", "S3_all","Cache_PSL-26" ,"Cache_all", "Cache_since24"]
 )
 
 if 'df' not in st.session_state:
@@ -71,8 +78,11 @@ S3_DEFAULTS = {
     "S3_all": ("t20_bbb.csv", "load_complete"),
 }
 CACHE_DEFAULTS = {
-    "Cache_all": "E:/Cricket Related Projects/HG-Datasets/t20_bbb.csv",
-    "Cache_since24": "E:/Cricket Related Projects/HG-Datasets/t20_bbb_since_2024.csv",
+    # "Cache_all": "E:/Cricket Related Projects/HG-Datasets/t20_bbb.csv",
+    # "Cache_since24": "E:/Cricket Related Projects/HG-Datasets/t20_bbb_since_2024.csv",
+    "Cache_all": t20_all_path,
+    "Cache_since24": t20_since_2024_path,
+    "Cache_PSL-26" : psl_2026_path,
 }
 
 if data_source == "Upload Data File":
