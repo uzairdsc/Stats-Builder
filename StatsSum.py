@@ -719,4 +719,185 @@ def bowler_summary(
     
     return s
 
+#  All Rounder Stats Summary Method
 
+def _isin_filter(frame, col, val):
+    """Apply equality/isin filter; skip None and empty lists."""
+    if val is None:
+        return frame
+    if isinstance(val, (list, tuple, set)):
+        vals = list(val)
+        if len(vals) == 0:
+            return frame
+        return frame[frame[col].isin(vals)]
+    return frame[frame[col] == val]
+
+
+def allrounder_summary(
+    df,
+    # Value filters (same set as batting/bowling summaries)
+    player_name=None,
+    inns=None,
+    mat_num=None,
+    team_bat=None,
+    team_bowl=None,
+    competition=None,
+    date_from=None,
+    date_to=None,
+    over_values=None,
+    phase=None,
+    ground=None,
+    mcode=None,
+    bat_hand=None,
+    bowl_type=None,
+    bowl_kind=None,
+    bowl_arm=None,
+    year_from=None,
+    year_to=None,
+    # Allrounder-specific minimums
+    min_bat_balls=None,
+    min_bowl_balls=None,
+    # Placeholder filters (inactive)
+    batting_position=None,
+    nationality=None,
+    age_range=None,
+):
+    local_df = df.copy()
+
+    # --------- Value filters ---------
+    local_df = _isin_filter(local_df, "bat", player_name)
+    local_df = _isin_filter(local_df, "p_match", mat_num)
+    local_df = _isin_filter(local_df, "inns", inns)
+    local_df = _isin_filter(local_df, "team_bat", team_bat)
+    local_df = _isin_filter(local_df, "team_bowl", team_bowl)
+    if competition:
+        local_df = local_df[local_df["competition"] == competition]
+    local_df = _isin_filter(local_df, "over", over_values)
+
+    if phase is not None:
+        phase_list = list(phase) if isinstance(phase, (list, tuple, set)) else [phase]
+        if len(phase_list) > 0:
+            mask = pd.Series(False, index=local_df.index)
+            if 1 in phase_list:
+                mask |= local_df["over"].between(1, 6)
+            if 2 in phase_list:
+                mask |= local_df["over"].between(7, 15)
+            if 3 in phase_list:
+                mask |= local_df["over"].between(16, 20)
+            local_df = local_df[mask]
+
+    if date_from is not None:
+        local_df = local_df[local_df["date"] >= pd.to_datetime(date_from)]
+    if date_to is not None:
+        local_df = local_df[local_df["date"] <= pd.to_datetime(date_to)]
+
+    local_df = _isin_filter(local_df, "ground", ground)
+    local_df = _isin_filter(local_df, "mcode", mcode)
+    local_df = _isin_filter(local_df, "bat_hand", bat_hand)
+    local_df = _isin_filter(local_df, "bowl_type", bowl_type)
+    local_df = _isin_filter(local_df, "bowl_kind", bowl_kind)
+    local_df = _isin_filter(local_df, "bowl_arm", bowl_arm)
+
+    if year_from is not None:
+        local_df = local_df[local_df["year"] >= int(year_from)]
+    if year_to is not None:
+        local_df = local_df[local_df["year"] <= int(year_to)]
+
+    OUT_COLS = [
+        "Player", "Bat Balls", "Runs", "Bat SR", "Bat Avg", "Bdy%",
+        "Bowl Balls", "Wkts", "Econ", "Bowl Avg", "Dot%", "Avg +/-",
+    ]
+
+    if local_df.empty:
+        return pd.DataFrame(columns=OUT_COLS)
+
+    # --------- Type normalization ---------
+    for c in ["wide", "noball", "batruns", "bowlruns"]:
+        local_df[c] = pd.to_numeric(local_df[c], errors="coerce").fillna(0)
+    for c in ["over", "inns", "p_match", "p_bat", "p_bowl", "p_out"]:
+        local_df[c] = pd.to_numeric(local_df[c], errors="coerce")
+    local_df["out"] = local_df["out"].fillna(False).astype(bool)
+
+    # ===================== BATTING SIDE =====================
+    # Balls faced = legal for the batter (wide == 0; no-balls ARE faced)
+    bat_valid = local_df[local_df["wide"] == 0].copy()
+
+    bat_valid["is_four"] = ((bat_valid["batruns"] == 4) & (bat_valid["outcome"] == "four")).astype(int)
+    bat_valid["is_six"] = ((bat_valid["batruns"] == 6) & (bat_valid["outcome"] == "six")).astype(int)
+    bat_valid["is_bdry"] = ((bat_valid["is_four"] == 1) | (bat_valid["is_six"] == 1)).astype(int)
+    bat_valid["is_dismissed"] = (
+        bat_valid["out"]
+        & bat_valid["p_out"].notna()
+        & (bat_valid["p_out"] == bat_valid["p_bat"])
+    ).astype(int)
+
+    bat = (
+        bat_valid.groupby(["p_bat", "bat"], dropna=False)
+        .agg(
+            BatBalls=("batruns", "size"),
+            Runs=("batruns", "sum"),
+            Bdry=("is_bdry", "sum"),
+            Dismissals=("is_dismissed", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"p_bat": "pid", "bat": "Player"})
+    )
+
+    # ===================== BOWLING SIDE =====================
+    # Legal balls bowled = wide == 0 & noball == 0 (byes/legbyes count)
+    bowl_valid = local_df[(local_df["wide"] == 0) & (local_df["noball"] == 0)].copy()
+    bowl_valid["is_dot"] = (bowl_valid["bowlruns"] == 0).astype(int)
+
+    BOWLER_DISMISSALS = ["bowled", "caught", "leg before wicket", "stumped", "hit wicket"]
+    local_df["is_wkt"] = (
+        local_df["out"]
+        & (local_df["outcome"] == "out")
+        & local_df["dismissal"].isin(BOWLER_DISMISSALS)
+    ).astype(int)
+
+    bowl_balls = (
+        bowl_valid.groupby(["p_bowl", "bowl"], dropna=False)
+        .agg(BowlBalls=("bowlruns", "size"), DotBalls=("is_dot", "sum"))
+        .reset_index()
+    )
+    bowl_rw = (
+        local_df.groupby(["p_bowl", "bowl"], dropna=False)
+        .agg(RunsConc=("bowlruns", "sum"), Wkts=("is_wkt", "sum"))
+        .reset_index()
+    )
+    bowl = bowl_balls.merge(bowl_rw, on=["p_bowl", "bowl"], how="left").rename(
+        columns={"p_bowl": "pid", "bowl": "Player_b"}
+    )
+
+    # ===================== MERGE (inner = batted AND bowled) =====================
+    out = bat.merge(bowl, on="pid", how="inner")
+    if out.empty:
+        return pd.DataFrame(columns=OUT_COLS)
+
+    # Apply the two minimums
+    if min_bat_balls is not None:
+        out = out[out["BatBalls"] >= int(min_bat_balls)]
+    if min_bowl_balls is not None:
+        out = out[out["BowlBalls"] >= int(min_bowl_balls)]
+    if out.empty:
+        return pd.DataFrame(columns=OUT_COLS)
+
+    # ===================== METRICS =====================
+    out["Bat SR"] = np.where(out["BatBalls"] > 0, round(out["Runs"] / out["BatBalls"] * 100, 1), 0.0)
+    out["Bat Avg"] = np.where(out["Dismissals"] > 0, round(out["Runs"] / out["Dismissals"], 2), np.nan)
+    out["Bdy%"] = np.where(out["BatBalls"] > 0, round(out["Bdry"] / out["BatBalls"] * 100, 1), 0.0)
+
+    out["Econ"] = np.where(out["BowlBalls"] > 0, round(out["RunsConc"] * 6 / out["BowlBalls"], 2), 0.0)
+    out["Bowl Avg"] = np.where(out["Wkts"] > 0, round(out["RunsConc"] / out["Wkts"], 2), np.nan)
+    out["Dot%"] = np.where(out["BowlBalls"] > 0, round(out["DotBalls"] / out["BowlBalls"] * 100, 1), 0.0)
+
+    out["Avg +/-"] = (out["Bat Avg"] - out["Bowl Avg"]).round(2)
+
+    out = out.rename(columns={"BatBalls": "Bat Balls", "BowlBalls": "Bowl Balls"})
+    out["Bat Balls"] = out["Bat Balls"].astype(int)
+    out["Bowl Balls"] = out["Bowl Balls"].astype(int)
+    out["Runs"] = out["Runs"].astype(int)
+    out["Wkts"] = out["Wkts"].astype(int)
+
+    out = out[OUT_COLS].sort_values(by="Bat SR", ascending=False).reset_index(drop=True)
+    return out

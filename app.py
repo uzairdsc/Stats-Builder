@@ -5,7 +5,7 @@ from botocore.exceptions import NoCredentialsError
 import os
 from pathlib import Path
 
-from StatsSum import batting_summary, bowler_summary
+from StatsSum import batting_summary, bowler_summary, allrounder_summary
 
 DATA_ROOT = os.getenv("DATA_ROOT", "data")
 psl_2026_path = Path(DATA_ROOT) / "t20_bbb_psl_2026.csv"
@@ -60,7 +60,7 @@ def load_from_s3(bucket_name, file_key, aws_access_key, aws_secret_key, region_n
 st.sidebar.header("📂 Select Dataset Source")
 data_source = st.sidebar.selectbox(
     "Choose data source:",
-    ["Upload Data File", "S3_since24", "S3_PSL-26", "S3_all","Cache_PSL-26" ,"Cache_all", "Cache_since24"]
+    ["Upload Data File", "S3_since24", "S3_PSL-26", "S3_all", "Cache_PSL-26", "Cache_all", "Cache_since24"]
 )
 
 if 'df' not in st.session_state:
@@ -69,6 +69,8 @@ if 'batting_df' not in st.session_state:
     st.session_state.batting_df = None
 if 'bowling_df' not in st.session_state:
     st.session_state.bowling_df = None
+if 'allround_df' not in st.session_state:
+    st.session_state.allround_df = None
 
 df = st.session_state.df
 
@@ -78,11 +80,9 @@ S3_DEFAULTS = {
     "S3_all": ("t20_bbb.csv", "load_complete"),
 }
 CACHE_DEFAULTS = {
-    # "Cache_all": "E:/Cricket Related Projects/HG-Datasets/t20_bbb.csv",
-    # "Cache_since24": "E:/Cricket Related Projects/HG-Datasets/t20_bbb_since_2024.csv",
     "Cache_all": t20_all_path,
     "Cache_since24": t20_since_2024_path,
-    "Cache_PSL-26" : psl_2026_path,
+    "Cache_PSL-26": psl_2026_path,
 }
 
 if data_source == "Upload Data File":
@@ -116,7 +116,7 @@ elif data_source in S3_DEFAULTS:
 elif data_source in CACHE_DEFAULTS:
     local_file_path = st.sidebar.text_input(
         "Enter local file path:",
-        value=CACHE_DEFAULTS[data_source]
+        value=str(CACHE_DEFAULTS[data_source])
     )
 
     if st.sidebar.button("Load from Local Storage", key=f"load_{data_source}"):
@@ -147,6 +147,7 @@ if st.session_state.df is not None:
             st.session_state.df = None
             st.session_state.batting_df = None
             st.session_state.bowling_df = None
+            st.session_state.allround_df = None
             st.rerun()
 
 # Widget keys used by filters (for Clear Filters)
@@ -154,7 +155,8 @@ FILTER_KEYS = [
     "f_date_range", "f_competition", "f_match", "f_mcode",
     "f_team_bat", "f_batter", "f_bat_hand", "f_ground",
     "f_team_bowl", "f_bowler", "f_bowl_type", "f_bowl_kind",
-    "f_bowl_arm", "f_inns", "f_overs", "f_phase", "f_min_balls",
+    "f_bowl_arm", "f_inns", "f_overs", "f_phase",
+    "f_min_bat_balls", "f_min_bowl_balls",
 ]
 
 # ===== Header tooltips (clear metric definitions) =====
@@ -211,6 +213,20 @@ BOWL_COL_CONFIG = {
     "SR-II": st.column_config.NumberColumn("SR-II", help="Balls bowled per wicket in the second innings"),
     "Pressure": st.column_config.NumberColumn("Pressure", help="Composite 0-100 score: Dot% (40%) + economy vs benchmark (35%) + wicket rate (25%)"),
 }
+ALL_COL_CONFIG = {
+    "Player": st.column_config.TextColumn("Player", help="Player name"),
+    "Bat Balls": st.column_config.NumberColumn("Bat Balls", help="Legal balls faced"),
+    "Runs": st.column_config.NumberColumn("Runs", help="Total runs scored"),
+    "Bat SR": st.column_config.NumberColumn("Bat SR", help="Batting strike rate (runs per 100 balls)"),
+    "Bat Avg": st.column_config.NumberColumn("Bat Avg", help="Batting average (runs per dismissal)"),
+    "Bdy%": st.column_config.NumberColumn("Bdy%", help="% of balls faced that were hit for a boundary"),
+    "Bowl Balls": st.column_config.NumberColumn("Bowl Balls", help="Legal balls bowled"),
+    "Wkts": st.column_config.NumberColumn("Wkts", help="Total wickets taken"),
+    "Econ": st.column_config.NumberColumn("Econ", help="Runs conceded per 6 legal balls"),
+    "Bowl Avg": st.column_config.NumberColumn("Bowl Avg", help="Bowling average (runs conceded per wicket)"),
+    "Dot%": st.column_config.NumberColumn("Dot%", help="% of balls bowled that were dot balls"),
+    "Avg +/-": st.column_config.NumberColumn("Avg +/-", help="Batting average minus bowling average"),
+}
 
 
 def opts(frame, col):
@@ -266,9 +282,14 @@ if df is not None:
             st.multiselect("Overs", [int(o) for o in opts(df, 'over')], key="f_overs")
             st.multiselect("Phase", ["Powerplay (1-6)", "Middle (7-15)", "Slog (16-20)"], key="f_phase")
 
-        # ----- Minimum balls filter -----
-        st.number_input("Minimum Balls", min_value=0, value=50, step=5, key="f_min_balls",
-                        help="Only include players with at least this many balls (faced for batting, bowled for bowling)")
+        # ----- Minimum balls filters (bat / bowl) -----
+        mb1, mb2 = st.columns(2)
+        with mb1:
+            st.number_input("Minimum Bat Balls", min_value=0, value=50, step=5, key="f_min_bat_balls",
+                            help="Min balls faced (batting & allrounder)")
+        with mb2:
+            st.number_input("Minimum Bowl Balls", min_value=0, value=50, step=5, key="f_min_bowl_balls",
+                            help="Min balls bowled (bowling & allrounder)")
 
         # ----- Buttons: clear (col 2) and apply (col 3) -----
         b1, b2, b3, b4 = st.columns(4)
@@ -283,9 +304,10 @@ if df is not None:
             st.session_state.pop(k, None)
         st.session_state.batting_df = None
         st.session_state.bowling_df = None
+        st.session_state.allround_df = None
         st.rerun()
 
-    # Apply: run BOTH summaries once with the same filter set
+    # Apply: run all three summaries once with the same filter set
     if apply_clicked:
         s = st.session_state
 
@@ -303,7 +325,6 @@ if df is not None:
             player_name=s.get("f_batter") or None,
             team_bat=s.get("f_team_bat") or None,
             team_bowl=s.get("f_team_bowl") or None,
-            bowler_name=s.get("f_bowler") or None,
             competition=None if comp == "All" else comp,
             mat_num=s.get("f_match") or None,
             mcode=s.get("f_mcode") or None,
@@ -317,25 +338,36 @@ if df is not None:
             bowl_type=s.get("f_bowl_type") or None,
             bowl_kind=s.get("f_bowl_kind") or None,
             bowl_arm=s.get("f_bowl_arm") or None,
-            min_balls=s.get("f_min_balls") or None,
         )
 
-        with st.spinner("Computing batting & bowling summaries..."):
-            st.session_state.batting_df = batting_summary(df, **common_kwargs)
-            st.session_state.bowling_df = bowler_summary(df, **common_kwargs)
+        min_bat = s.get("f_min_bat_balls") or None
+        min_bowl = s.get("f_min_bowl_balls") or None
+        bowler_sel = s.get("f_bowler") or None
+
+        with st.spinner("Computing batting, bowling & allrounder summaries..."):
+            st.session_state.batting_df = batting_summary(
+                df, min_balls=min_bat, bowler_name=bowler_sel, **common_kwargs
+            )
+            st.session_state.bowling_df = bowler_summary(
+                df, min_balls=min_bowl, bowler_name=bowler_sel, **common_kwargs
+            )
+            st.session_state.allround_df = allrounder_summary(
+                df, min_bat_balls=min_bat, min_bowl_balls=min_bowl, **common_kwargs
+            )
 
     # ===== Results Section =====
     batting_df = st.session_state.batting_df
     bowling_df = st.session_state.bowling_df
+    allround_df = st.session_state.allround_df
 
-    if batting_df is not None or bowling_df is not None:
+    if batting_df is not None or bowling_df is not None or allround_df is not None:
         st.markdown("---")
 
         # Top control row: view toggle (left) + rows dropdown (right)
         view_col, _, rows_col = st.columns([2, 4, 1])
         with view_col:
             view = st.segmented_control(
-                "View", ["Batting", "Bowling"], default="Batting",
+                "View", ["Batting", "Bowling", "All Rounders"], default="Batting",
                 key="stats_view", label_visibility="collapsed"
             ) or "Batting"
         with rows_col:
@@ -343,8 +375,10 @@ if df is not None:
 
         if view == "Batting":
             result_df, col_config, label = batting_df, BAT_COL_CONFIG, "Batting Summary"
-        else:
+        elif view == "Bowling":
             result_df, col_config, label = bowling_df, BOWL_COL_CONFIG, "Bowling Summary"
+        else:
+            result_df, col_config, label = allround_df, ALL_COL_CONFIG, "Allrounder Summary"
 
         if result_df is None or result_df.empty:
             st.error("⚠️ No data available for the selected filters. Please adjust your filter selections.")
